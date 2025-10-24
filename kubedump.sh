@@ -17,6 +17,8 @@ done
 
 CONTEXT="${1:-}"
 BACKUP_DIR="/KUBERNETES_BACKUP/DUMP"
+# A list of resource types that should generally be excluded from backups.
+readonly EXCLUDED_RESOURCES="events|bindings|componentstatuses|localsubjectaccessreviews.authorization.k8s.io"
 
 # If context is not provided, use the current context
 if [[ -z "$CONTEXT" ]]; then
@@ -27,7 +29,7 @@ fi
 NAMESPACES=$(kubectl get ns -o jsonpath="{.items[*].metadata.name}")
 
 # Get all namespaced resources
-RESOURCES=$(kubectl api-resources --namespaced -o name | egrep -v ^"bindings|localsubjectaccessreviews.authorization.k8s.io"$ | tr "\n" " ")
+RESOURCES=$(kubectl api-resources --namespaced --verbs=list -o name | egrep -v ^"${EXCLUDED_RESOURCES}"$ | tr "\n" " ")
 
 # Trap to handle script interruptions
 trap 'echo "Script interrupted."; exit 1' INT TERM
@@ -43,3 +45,13 @@ for ns in $NAMESPACES; do
     done
   done
 done
+
+NON_NAMESPACED_RESOURCES=$(kubectl api-resources --namespaced=false --verbs=list -o name | egrep -v "${EXCLUDED_RESOURCES}" | tr "\n" " ")
+mkdir -p "${BACKUP_DIR}/${CONTEXT}/NON_NAMESPACED_RESOURCES"
+> "${BACKUP_DIR}/${CONTEXT}/NON_NAMESPACED_RESOURCES/NON_NAMESPACED_RESOURCES.yaml"
+for resource in $RESOURCES; do
+    kubectl --context "$CONTEXT" get -o yaml "$resource" >> "${BACKUP_DIR}/${CONTEXT}/NON_NAMESPACED_RESOURCES/NON_NAMESPACED_RESOURCES.yaml"
+    echo >> "${BACKUP_DIR}/${CONTEXT}/NON_NAMESPACED_RESOURCES/NON_NAMESPACED_RESOURCES.yaml"
+    echo "---" >> "${BACKUP_DIR}/${CONTEXT}/NON_NAMESPACED_RESOURCES/NON_NAMESPACED_RESOURCES.yaml"
+done
+
