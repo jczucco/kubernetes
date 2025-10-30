@@ -15,10 +15,21 @@ for cmd in kubectl jq ; do
   fi
 done
 
+# log function
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] - ${1}: ${2}"
+}
+
 CONTEXT="${1:-}"
-BACKUP_DIR="/KUBERNETES_BACKUP/DUMP"
+readonly BACKUP_DIR="/KUBERNETES_BACKUP/DUMP"
+readonly RETENTION_DAYS=30
 # A list of resource types that should generally be excluded from backups.
 readonly EXCLUDED_RESOURCES="events|bindings|componentstatuses|localsubjectaccessreviews.authorization.k8s.io"
+
+if [ ! -d "${BACKUP_DIR}" ]; then
+  echo "Directory '$DIRECTORY' does not exist."
+  exit 2
+fi
 
 # If context is not provided, use the current context
 if [[ -z "$CONTEXT" ]]; then
@@ -55,3 +66,13 @@ for resource in $RESOURCES; do
     echo "---" >> "${BACKUP_DIR}/${CONTEXT}/NON_NAMESPACED_RESOURCES/NON_NAMESPACED_RESOURCES.yaml"
 done
 
+readonly TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+tar cfz ${BACKUP_DIR}/kubernetes_dump_${TIMESTAMP}.tar.gz ${BACKUP_DIR}/${CONTEXT}
+find ${BACKUP_DIR} -type d -exec chmod 0700 {} \;
+find ${BACKUP_DIR} -type f -exec chmod 0600 {} \;
+log "INFO" "$(ls -l ${BACKUP_DIR}/kubernetes_dump_${TIMESTAMP}.tar.gz)"
+
+# ROTATING
+log "INFO" "Removing backups older than ${RETENTION_DAYS} days..."
+find ${BACKUP_DIR} -name kubernetes_dump_*.tar.gz -type f -mtime +"${RETENTION_DAYS}" -print -delete
+echo
